@@ -39,3 +39,10 @@ You must have a version 3 Waveshare 2.13" touch e-paper HAT attached to the Pi.
 
 If all is successful you should be presented with a pin entry screen and when the correct passcode is entered you will
 see your password entries listed.
+
+## Acknowledgments
+
+Thanks to these repos for some useful code to manage the touchscreen and E-Paper interfaces on the HAT:
+
+* https://github.com/waveshare/Touch_e-Paper_HAT
+* https://github.com/thewh1teagle/zero-hid

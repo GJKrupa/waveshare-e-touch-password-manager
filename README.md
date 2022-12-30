@@ -21,7 +21,7 @@ on the first/last page respectively.
 
 ## Pre-Requisites
 
-The included Ansible playbook with set up the device and install all the required software. You must have already
+The included Ansible playbook will set up the device and install all the required software. You must have already
 installed a recent version of Raspbian (preferably Raspbian lite) and enabled WiFi with passwordless SSH access
 to a user that has passwordless sudo (basically the standard pi user). You also must have Ansible installed on your
 host device.

@@ -1,0 +1,4 @@
+*.pyc
+.fleet/
+.python-version
+*.kdbx

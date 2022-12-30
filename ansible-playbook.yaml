@@ -1,0 +1,207 @@
+---
+- name: passman-install
+  hosts: all
+  become: yes
+  become_user: root
+  become_method: sudo
+  tasks:
+
+    - name: Run the equivalent of "apt-get update"
+      apt:
+        update_cache: yes
+
+    - name: Upgrade all packages to the latest version
+      apt:
+        name: "*"
+        state: latest
+
+    - name: Install packages
+      apt:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - python3
+          - python3-pip
+          - python3-pil
+          - python3-numpy
+          - samba
+          - samba-common-bin
+          - libxslt1-dev
+          - acl # Ansible needs this to become an unprivileged user
+
+    - name: Create group for the app user
+      group:
+        name: passman
+        gid: 2000
+
+    - name: Create user to run the app
+      user:
+        name: passman
+        comment: Password Manager
+        shell: /bin/bash
+        uid: 2000
+        groups: passman,adm,dialout,cdrom,sudo,audio,video,plugdev,games,users,input,render,netdev,spi,i2c,gpio
+
+    - name: Allow the passman user to shut down the device
+      copy:
+        dest: /etc/sudoers.d/010_passman-shutdown
+        owner: root
+        group: root
+        mode: '0640'
+        content: |
+          passman ALL=(root) NOPASSWD: /usr/sbin/shutdown
+
+    - name: Install Python packages with pip
+      become: yes
+      become_user: passman
+      pip:
+        name: "{{ packages }}"
+        executable: pip3
+      vars:
+        packages:
+          - RPi.GPIO
+          - spidev
+          - pykeepass
+          - smbus
+
+    - name: Enable i2c in the boot configuration
+      lineinfile:
+        path: /boot/config.txt
+        insertafter: "^\\[all\\]$"
+        line: "{{ item.line }}"
+      loop:
+        - line: 'dtparam=i2c_arm=on'
+        - line: 'dtparam=spi=on'
+        - line: 'dtoverlay=dwc2,dr_mode=peripheral'
+
+    - name: Enable required modules in /etc/modules
+      lineinfile:
+        path: /etc/modules
+        line: "{{ item.line }}"
+      loop:
+        - line: 'i2c-dev'
+        - line: 'dwc2'
+        - line: 'libcomposite'
+
+    - name: Copy script to iniitialise USB gadget on boot
+      copy:
+        src: ./assets/init_usb_gadget
+        dest: /usr/bin/init_usb_gadget
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Enable gadget script on boot
+      lineinfile:
+        path: /etc/rc.local
+        insertbefore: "^exit.*$"
+        line: "/usr/bin/init_usb_gadget"
+
+    - name: Create directory for BCM2835 driver
+      file:
+        path: /root/bcm-driver
+        state: directory
+        mode: '0700'
+
+    - name: Unzip the BCM2835 driver
+      unarchive:
+        src: ./assets/bcm2835-1.71.tar.gz
+        dest: /root/bcm-driver
+
+    - name: Build and install the BCM driver
+      shell: |
+        ./configure
+        make
+        make check
+        make install
+      args:
+        executable: /bin/bash
+        chdir: /root/bcm-driver/bcm2835-1.71
+        creates: /usr/local/lib/libbcm2835.a
+
+    - name: Copy WiringPi package
+      copy:
+        src: ./assets/wiringpi-latest.deb
+        dest: /root/wiringpi-latest.deb
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Install WiringPi Package
+      apt:
+        deb: /root/wiringpi-latest.deb
+
+    - name: Create directory to share Keepass Database
+      file:
+        path: /home/passman/database
+        owner: passman
+        group: passman
+        state: directory
+        mode: '0700'
+
+    - name: Create Samba include directory
+      file:
+        path: /etc/samba/smb.conf.d
+        owner: root
+        group: root
+        state: directory
+        mode: '0755'
+
+    - name: Create Samba custom config file
+      copy:
+        dest: /etc/samba/smb.conf.d/passman.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [passman]
+          path = /home/passman/database
+          browsable = yes
+          writeable = yes
+          create mask = 0700
+          directory mask = 0700
+          public = yes
+          force user = passman
+
+    - name: Include our custom Samba config file in the main config
+      lineinfile:
+        path: /etc/samba/smb.conf
+        line: "include = /etc/samba/smb.conf.d/passman.conf"
+
+    - name: Copy the application
+      become: yes
+      become_user: passman
+      synchronize:
+        src: ./app/
+        dest: /home/passman/app
+        rsync_opts:
+          - "--exclude=*.pyc"
+
+    - name: Install the systemd unit file
+      copy:
+        dest: /etc/systemd/system/passman.service
+        content: |
+          [Unit]
+            Description=Python E-paper Password Manager
+            After=multi-user.target
+
+            [Service]
+            Type=simple
+            ExecStart=/usr/bin/python3 /home/passman/app/main.py
+            Restart=on-failure
+            User=passman
+            Group=passman
+
+            [Install]
+            WantedBy=custom.target
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+    
+    - name: Enable and start the service
+      systemd:
+        name: passman.service
+        state: started
+        enabled: yes

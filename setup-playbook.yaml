@@ -6,14 +6,14 @@
   become_method: sudo
   tasks:
 
-    - name: Run the equivalent of "apt-get update"
-      apt:
-        update_cache: yes
+    # - name: Run the equivalent of "apt-get update"
+    #   apt:
+    #     update_cache: yes
 
-    - name: Upgrade all packages to the latest version
-      apt:
-        name: "*"
-        state: latest
+    # - name: Upgrade all packages to the latest version
+    #   apt:
+    #     name: "*"
+    #     state: latest
 
     - name: Install packages
       apt:
@@ -28,6 +28,7 @@
           - samba
           - samba-common-bin
           - libxslt1-dev
+          - build-essential
           - acl # Ansible needs this to become an unprivileged user
 
     - name: Create group for the app user
@@ -52,6 +53,21 @@
         content: |
           passman ALL=(root) NOPASSWD: /usr/sbin/shutdown
 
+    - name: Allow the passman user to manage services (polkit < 0.106 version - Raspbian has 0.105)
+      # polkit 0.105 doesn't allow fine-grain JavaScript rules so we can't limit it by service name
+      copy:
+        dest: /etc/polkit-1/localauthority/50-local.d/50-allow-passman-daemon-ctrl.pkla
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Allow starting and stopping services for passman]
+          Identity=unix-user:passman
+          Action=org.freedesktop.systemd1.manage-units
+          ResultAny=yes
+          ResultInactive=yes
+          ResultActive=yes
+
     - name: Install Python packages with pip
       become: yes
       become_user: passman
@@ -64,6 +80,7 @@
           - spidev
           - pykeepass
           - smbus
+          - dbus-python
 
     - name: Enable i2c in the boot configuration
       lineinfile:
@@ -84,7 +101,7 @@
         - line: 'dwc2'
         - line: 'libcomposite'
 
-    - name: Copy script to iniitialise USB gadget on boot
+    - name: Copy script to initialise USB gadget on boot
       copy:
         src: ./assets/init_usb_gadget
         dest: /usr/bin/init_usb_gadget
@@ -169,39 +186,8 @@
         path: /etc/samba/smb.conf
         line: "include = /etc/samba/smb.conf.d/passman.conf"
 
-    - name: Copy the application
-      become: yes
-      become_user: passman
-      synchronize:
-        src: ./app/
-        dest: /home/passman/app
-        rsync_opts:
-          - "--exclude=*.pyc"
-
-    - name: Install the systemd unit file
-      copy:
-        dest: /etc/systemd/system/passman.service
-        content: |
-          [Unit]
-            Description=Python E-paper Password Manager
-            After=multi-user.target
-
-            [Service]
-            Type=simple
-            ExecStart=/usr/bin/python3 /home/passman/app/main.py
-            Restart=on-failure
-            User=passman
-            Group=passman
-
-            [Install]
-            WantedBy=custom.target
-
-    - name: Reload systemd
+    - name: Ensure that smbd is disabled by default
       systemd:
-        daemon_reload: yes
-    
-    - name: Enable and start the service
-      systemd:
-        name: passman.service
-        state: started
-        enabled: yes
+        name: smbd.service
+        state: stopped
+        enabled: no

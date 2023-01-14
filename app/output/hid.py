@@ -13,9 +13,9 @@ class KeyboardWriter(object):
             for key in self.keyboard.encode(str):
                 fd.write(key.encode())
                 fd.flush()
-                time.sleep(0.07)
+                time.sleep(0.03)
                 fd.write(KEY_UP.encode())
                 fd.flush()
-                time.sleep(0.07 + random.uniform(0.0, 0.03))
+                time.sleep(0.03 + random.uniform(0.0, 0.03))
                 
         

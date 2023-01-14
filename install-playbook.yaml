@@ -1,0 +1,43 @@
+---
+- name: passman-install
+  hosts: all
+  become: yes
+  become_user: root
+  become_method: sudo
+  tasks:
+    - name: Copy the application
+      become: yes
+      become_user: passman
+      synchronize:
+        src: ./app/
+        dest: /home/passman/app
+        rsync_opts:
+          - "--exclude=*.pyc"
+
+    - name: Install the systemd unit file
+      copy:
+        dest: /etc/systemd/system/passman.service
+        content: |
+          [Unit]
+          Description=Python E-paper Password Manager
+          After=multi-user.target
+          StartLimitInterval=200
+          StartLimitBurst=5
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/python3 /home/passman/app/main.py
+          Restart=always
+          RestartSec=10
+          User=passman
+          Group=passman
+
+          [Install]
+          WantedBy=default.target        
+    
+    - name: Enable and start the service
+      systemd:
+        name: passman.service
+        state: restarted
+        daemon_reload: yes
+        enabled: yes

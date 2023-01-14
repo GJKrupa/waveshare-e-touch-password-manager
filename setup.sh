@@ -10,4 +10,4 @@ ansible-playbook \
   --user "$USER" \
   --become \
   --become-method sudo \
-  install-playbook.yaml
+  setup-playbook.yaml

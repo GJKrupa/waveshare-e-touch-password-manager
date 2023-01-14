@@ -46,19 +46,9 @@ class SelectScreen(Screen):
             self.draw_page()
             self.busy = False
 
-    def lock(self, btn):
-        if self.menu_callback is not None:
-            self.busy = True
-            btn.draw_inverse(self.draw)
-            self.epd.displayPartial_Wait(self.epd.getbuffer(self.image))
-            self.menu_callback()
-
-    def shutdown(self, btn):
+    def menu(self):
         self.busy = True
-        self.draw.rectangle([(0,0),(self.epd.height, self.epd.width)], fill = 1)
-        self.draw.text((2, 2), "Shutting Down", font = self.entry_font, fill = 0)
-        self.epd.displayPartial_Wait(self.epd.getbuffer(self.image))
-        os.system("sudo /usr/sbin/shutdown -h now")
+        self.menu_callback()
 
     def draw_page(self):
         self.buttons = []
@@ -75,27 +65,20 @@ class SelectScreen(Screen):
             if self.page_num > 0:
                 self.buttons.append(
                     Button(
-                        210, 0, 40, 50, "Up", self.entry_font, lambda btn: self.page_up()
-                    )
-                )
-            else:
-                self.buttons.append(
-                    Button(
-                        210, 0, 40, 50, "Lck", self.entry_font, lambda btn: self.lock(btn)
+                        210, 0, 40, 40, "Up", self.entry_font, lambda btn: self.page_up()
                     )
                 )
 
+            self.buttons.append(
+                Button(
+                    210, 41, 40, 40, "Menu", self.entry_font, lambda btn: self.menu()
+                )
+            )
 
             if self.page_num < len(self.pages)-1:
                 self.buttons.append(
                     Button(
-                        210, 72, 40, 50, "Dn", self.entry_font, lambda btn: self.page_down()
-                    )
-                )
-            else:
-                self.buttons.append(
-                    Button(
-                        210, 72, 40, 50, "ShtD", self.entry_font, self.shutdown
+                        210, 82, 40, 40, "Dn", self.entry_font, lambda btn: self.page_down()
                     )
                 )
 

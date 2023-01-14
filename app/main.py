@@ -1,12 +1,16 @@
 from epd.entry import EntryScreen
 from epd.select import SelectScreen
 from epd.item import ItemScreen
+from epd.menu import MenuScreen
+from epd.shared_drive import SharedDriveScreen
+from epd.shutdown import ShutdownScreen
 from epd.lib.epd2in13_V3 import EPD
 from epd.lib.gt1151 import GT1151, GT_Development
 from passwords.store import Store
 import RPi.GPIO as GPIO
 from threading import Condition, Thread
 from queue import Queue, Empty
+from os.path import exists
 import logging
 import time
 import signal
@@ -27,6 +31,7 @@ class Main(object):
         self.pressed = False
         self.dragging = False
         self.busy = False
+        self.current_screen = None
 
 
     def on_gpio_change(self, channel) :
@@ -85,25 +90,46 @@ class Main(object):
         self.current_screen.end()
         self.store = Store(DATABASE)
         if self.store.open(passcode):
-            self.current_screen = SelectScreen(self.epd, self.store, self.on_lock, self.on_select_item)
+            self.current_screen = SelectScreen(self.epd, self.store, self.on_menu, self.on_select_item)
         else:
             self.current_screen = EntryScreen(self.epd, self.on_passcode)
         self.current_screen.start()
 
-    def on_lock(self):
+    def on_shared_drive(self):
         self.current_screen.end()
-        self.current_screen = EntryScreen(self.epd, self.on_passcode)
+        self.current_screen = SharedDriveScreen(self.epd, self.check_database_and_run)
+        self.current_screen.start()
+
+    def on_shutdown(self):
+        self.current_screen.end()
+        self.current_screen = ShutdownScreen(self.epd, self.on_menu)
+        self.current_screen.start()
+
+    def on_menu(self):
+        self.current_screen.end()
+        self.current_screen = MenuScreen(self.epd, self.check_database_and_run, self.on_back_to_select, self.on_shared_drive, self.on_shutdown)
         self.current_screen.start()
 
     def on_select_item(self, name):
         self.current_screen.end()
-        self.current_screen = ItemScreen(self.epd, self.store, name, self.on_item_back)
+        self.current_screen = ItemScreen(self.epd, self.store, name, self.on_back_to_select)
         self.current_screen.start()
 
-    def on_item_back(self):
+    def on_back_to_select(self):
         self.current_screen.end()
-        self.current_screen = SelectScreen(self.epd, self.store, self.on_lock, self.on_select_item)
+        self.current_screen = SelectScreen(self.epd, self.store, self.on_menu, self.on_select_item)
         self.current_screen.start()
+
+    def check_database_and_run(self):
+        self.store = None
+        if self.current_screen is not None:
+            self.current_screen.end()
+        if exists(DATABASE):
+            self.current_screen = EntryScreen(self.epd, self.on_passcode)
+            self.current_screen.start()
+        else:
+            self.current_screen = SharedDriveScreen(self.epd, self.check_database_and_run, message="Add \\\\10.0.0.1\\passman\\passman.kdbx")
+            self.current_screen.start()
 
     def on_ctrl_c(self, sig, frame):
         logging.warning("CTRL-C")
@@ -114,8 +140,8 @@ class Main(object):
             self.epd.init(self.epd.FULL_UPDATE)
             self.gt.GT_Init()
             self.gt.GT_Reset()
-            self.current_screen = EntryScreen(self.epd, self.on_passcode)
-            self.current_screen.start()
+
+            self.check_database_and_run()
 
             self.touch_thread = Thread(target=self.touch_loop)
             self.touch_thread.start()
